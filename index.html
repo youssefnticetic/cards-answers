@@ -42,20 +42,47 @@
     position: absolute; top: 0; left: 0; z-index: 1;
   }
 
-  /* Image résultat (Celle qui apparaît après le clic) */
-  #card-image {
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: 100%;
-    object-fit: contain;
+/* --- ANIMATION MODERNE --- */
+  /* Conteneur de résultat (Overlay sombre) */
+  #result-overlay {
+    position: fixed; inset: 0;
+    background-color: rgba(0, 0, 0, 0.6); /* Fond noir semi-transparent */
+    backdrop-filter: blur(5px); /* Effet verre flouté derrière la carte */
     z-index: 20;
-    opacity: 0; 
-    pointer-events: none; /* Laisse passer les clics quand invisible */
-    transition: opacity 0.5s ease;
+    display: flex; justify-content: center; align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+
+  /* L'image de la carte elle-même */
+  #card-image {
+    max-width: 90%; max-height: 90%;
+    width: auto; height: 90%;
+    object-fit: contain;
+    
+    /* État initial de l'animation (Petit + Bas + Flou) */
+    transform: scale(0.85) translateY(20px);
+    opacity: 0;
+    filter: blur(10px);
+    
+    /* La magie de l'animation (Elasticité) */
+    transition: 
+      transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), /* Effet rebond */
+      opacity 0.4s ease-out,
+      filter 0.4s ease-out;
   }
   
-  #card-image.visible {
+  /* État ACTIF */
+  #result-overlay.visible {
     opacity: 1;
     pointer-events: all;
+  }
+  
+  #result-overlay.visible #card-image {
+    transform: scale(1) translateY(0); /* Taille normale */
+    opacity: 1;
+    filter: blur(0);
   }
 
   /* --- ZONES CLIQUABLES --- */
@@ -87,8 +114,10 @@
     <!-- Image de fond (Modifiée pour utiliser <img> comme tu voulais) -->
     <img id="background-image" src="" alt="Fond">
 
-    <!-- Image résultat -->
-    <img id="card-image" src="" alt="Résultat">
+<!-- Overlay Résultat -->
+    <div id="result-overlay">
+      <img id="card-image" src="" alt="Carte choisie">
+    </div>
 
     <!-- Zones transparentes -->
     <div class="clickable-areas">
@@ -134,15 +163,54 @@
   document.getElementById('audio-2').src = SONS_DATA[2];
   document.getElementById('audio-3').src = SONS_DATA[3];
 
-  let timeoutId = null;
+let timeoutId = null;
+  let isLocked = false; // Anti-spam clic
 
   function handleClick(numero) {
-    // 1. Jouer le son
+    if (isLocked) return;
+    isLocked = true; // Bloque les clics le temps de l'animation
+
+    // 1. Son
     const audio = document.getElementById(`audio-${numero}`);
     if(audio) {
         audio.currentTime = 0;
-        audio.play().catch(e => console.log("Erreur lecture (Autoplay?):", e));
+        audio.play().catch(e => console.log("Audio:", e));
     }
+
+    // 2. Animation d'entrée
+    const overlay = document.getElementById('result-overlay');
+    const cardImg = document.getElementById('card-image');
+    
+    cardImg.src = RESULTATS_DATA[numero];
+    
+    // Petit délai pour permettre au navigateur de rendre l'image avant l'anim
+    requestAnimationFrame(() => {
+        overlay.classList.add('visible');
+    });
+
+    // 3. Envoi Google Sheets (CORRECTIF ICI : text/plain pur)
+    fetch(API_URL, {
+      method: "POST",
+      mode: "no-cors", 
+      headers: { "Content-Type": "text/plain" }, 
+      body: JSON.stringify({ numero: numero })
+    })
+    .then(() => console.log("Envoyé au script"))
+    .catch(err => console.error("Erreur Fetch:", err));
+
+    // 4. Timer retour
+    if(timeoutId) clearTimeout(timeoutId);
+    
+    timeoutId = setTimeout(() => {
+      // Animation de sortie
+      overlay.classList.remove('visible');
+      
+      setTimeout(() => { 
+          cardImg.src = ""; 
+          isLocked = false; // Débloque le prochain clic
+      }, 500); // Attend la fin de la transition CSS
+    }, 30000); 
+  }
 
     // 2. Afficher l'image résultat
     const cardImg = document.getElementById('card-image');
